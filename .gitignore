@@ -1,0 +1,25 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# ---- 运行时产物 ----
+# 本机配置：位置 / 字号 / 背景开关，首次运行自动生成
+config.json
+perf-osd.log
+*.tmp
+
+# 快捷方式含本机绝对路径，用 创建快捷方式.bat 现生成
+*.lnk
+
+# ---- 系统 ----
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ---- 编辑器 ----
+.vscode/
+.idea/
