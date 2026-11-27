@@ -4,7 +4,7 @@
 关键技术点：
   * WS_EX_LAYERED + UpdateLayeredWindow(AC_SRC_ALPHA) → 真透明叠加，不是抠色
   * WS_EX_TRANSPARENT 常驻 + WS_EX_NOACTIVATE → 鼠标事件整块穿过去，下面该点哪儿还点哪儿
-  * WS_EX_APPWINDOW → 任务栏留一个按钮，右键「关闭窗口」就是唯一的关闭入口
+  * WS_EX_TOOLWINDOW → 任务栏和 Alt-Tab 里都不出现，只在右侧托盘留一个图标
   * 永远不会解锁拖动：这个窗口从头到尾不接受任何鼠标交互
 """
 from __future__ import annotations
@@ -20,8 +20,9 @@ from PIL import Image, ImageDraw, ImageFont
 from . import win32
 from .win32 import (SW_HIDE, SW_SHOWNOACTIVATE, WM_CLOSE, WM_COMMAND, WM_DESTROY,
                     WM_DISPLAYCHANGE, WM_HOTKEY, WM_SYSCOMMAND, WM_TIMER,
-                    WM_TRAYICON, WS_EX_APPWINDOW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
-                    WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP, user32)
+                    WM_TRAYICON, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+                    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP,
+                    user32)
 
 log = logging.getLogger(__name__)
 
@@ -104,7 +105,6 @@ class Overlay:
         self._menu_ids: dict[int, object] = {}
         self._font_cache: dict[tuple[int, bool], object] = {}
         self._glyph_cache: dict[int, tuple[int, int]] = {}
-        self._icons: list = []
 
         self.dpi = 96          # create() 拿到窗口后再按真实显示器 DPI 校正
         self.scale = 1.0
@@ -115,29 +115,19 @@ class Overlay:
         hinst = win32.kernel32.GetModuleHandleW(None)
         class_name = "PerfOSDOverlayWnd"
         self._wndproc_ref = win32.WNDPROC(self._wndproc)
-        # 任务栏按钮显示我们自己的图标
-        ico_path = os.path.join(os.path.dirname(os.path.dirname(
-            os.path.abspath(__file__))), "assets", "icon.ico")
-        for cw, ch in ((32, 32), (16, 16)):
-            h = user32.LoadImageW(None, ico_path, win32.IMAGE_ICON, cw, ch,
-                                  win32.LR_LOADFROMFILE)
-            if h:
-                self._icons.append(h)
         wc = win32.WNDCLASSEXW()
         wc.cbSize = ctypes.sizeof(win32.WNDCLASSEXW)
         wc.style = 0
         wc.lpfnWndProc = self._wndproc_ref
         wc.hInstance = hinst
         wc.lpszClassName = class_name
-        if self._icons:
-            wc.hIcon = self._icons[0]
-            wc.hIconSm = self._icons[1] if len(self._icons) > 1 else self._icons[0]
         self._cls_atom = user32.RegisterClassExW(ctypes.byref(wc))
         if not self._cls_atom:
             raise ctypes.WinError(ctypes.get_last_error())
 
+        # TOOLWINDOW：任务栏不给按钮、Alt-Tab 也不列出来，入口只剩右侧托盘图标
         ex = (WS_EX_LAYERED | WS_EX_TOPMOST | WS_EX_NOACTIVATE
-              | WS_EX_TRANSPARENT | WS_EX_APPWINDOW)
+              | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW)
         self.hwnd = user32.CreateWindowExW(
             ex, class_name, "PerfOSD 性能悬浮窗", WS_POPUP,
             0, 0, 200, 120, None, None, hinst, None
@@ -270,7 +260,7 @@ class Overlay:
                     self.toggle_visible()
                 return 0
             if msg == WM_SYSCOMMAND:
-                # 点任务栏按钮别把面板最小化掉，想关就走右键菜单
+                # 任何来源的最小化（Win+D、显示桌面）都不许把面板藏起来；要关走托盘菜单
                 if (wparam & 0xFFF0) == 0xF020:
                     return 0
             if msg == WM_CLOSE:

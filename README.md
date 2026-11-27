@@ -7,7 +7,8 @@
 
 - 纯 Python + ctypes，**只有 `pillow` 一个第三方依赖**
 - 逐像素透明、圆角、**始终置顶**；窗口**完全不接收鼠标**（点击直接穿透到下层），不抢焦点
-- 任务栏留一个按钮，右键「关闭窗口」即可退出；位置靠热键/配置切换，不需要拖动
+- **不在任务栏留按钮、也不进 Alt-Tab**，只在右侧托盘有个图标，右键就是全部操作（`WS_EX_TOOLWINDOW`）
+- 位置靠热键/配置切换，不需要拖动
 - **背景蒙版可以一键关掉**，切成纯文字贴着桌面，几乎不挡画面
 - **超紧凑排版**：行高按字形实高算、留白只留描边那圈，三行只有 176×52（125% 缩放，物理像素）
 - 默认不采集帧率，所以**不需要管理员权限**，双击就能用，也不会多一个后台进程
@@ -61,8 +62,8 @@ pip install pillow        :: 只缺这一个包
 
 开机自启：`Win+R` → `shell:startup` → 把 **PerfOSD 性能悬浮窗** 的快捷方式丢进去。
 
-> 关掉（三个入口任选）：**任务栏上那个带图标按钮 → 右键 → 关闭窗口**；
-> 托盘图标右键 → 退出；`Ctrl+Alt+Q`。
+> 关掉（两个入口任选）：**托盘图标右键 → 退出**；`Ctrl+Alt+Q`。
+> 任务栏里没有它的按钮，所以别去任务栏找；它只占托盘那一格图标。
 
 **这个面板不接受任何鼠标操作**——它盖住的地方，鼠标该点哪儿还是点哪儿（`WS_EX_TRANSPARENT`
 常驻，从头到尾没有"解锁拖动"这种东西）。所以位置不用拖，见下面热键和配置。
@@ -149,9 +150,10 @@ pip install pillow        :: 只缺这一个包
 | GPU 温度 / 显存 | NVML | 只有 NVIDIA 有 |
 | FPS | `PresentMon`（ETW）把 CSV 打到 stdout，本工具解析 `MsBetweenPresents` | FPS = 窗口内帧数 ÷ 这些帧的总时长，比看墙钟更抗批量输出；默认不启用 |
 
-悬浮窗本身：`CreateWindowEx(WS_EX_LAYERED|TOPMOST|APPWINDOW|NOACTIVATE|TRANSPARENT)`，
+悬浮窗本身：`CreateWindowEx(WS_EX_LAYERED|TOPMOST|TOOLWINDOW|NOACTIVATE|TRANSPARENT)`，
 每帧用 Pillow 画一张 RGBA 图 → 预乘 alpha → `UpdateLayeredWindow(AC_SRC_ALPHA)`。
 所以是真透明（不是抠色），不会闪，也不会把桌面变成纯色块。
+`TOOLWINDOW` 是关键的一笔：它让窗口不进任务栏、也不进 Alt-Tab，只剩托盘图标。
 
 排版也是量出来的，不是拍出来的：每行的行高 = **该行字形的实际高度**（`font.getbbox("0")`）
 + 一点行距，不是 `字号 × 1.18` 这类拍脑袋的倍数；基线按字形上下边界做光学居中，
@@ -168,8 +170,8 @@ pip install pillow        :: 只缺这一个包
 2. 帧率要管理员权限（所以默认闭着，见第二节）。
 3. AMD / Intel 显卡只有占用率，没有显存和温度（要读需要厂商 SDK）。
 4. 多显示器：默认贴在**主显示器**；跨屏要改 `config.json` 的 `pos`，不会自动适配不同 DPI 的缩放。
-   另外因为它要在任务栏留按钮，Alt-Tab 里也会列出一个 PerfOSD（点它不会激活，纯占位）。
-5. 首次运行会在缩略图/托盘生成 `assets/icon.ico`。
+5. Windows 11 会把新的托盘图标收进「^」溢出区，第一次要手动拖出来（见第三节末尾）。
+6. 首次运行会在缩略图/托盘生成 `assets/icon.ico`。
 
 ---
 
@@ -177,7 +179,7 @@ pip install pillow        :: 只缺这一个包
 
 ```
 perf-osd/
-├─ main.py                  入口：采样线程 + 消息循环 + 托盘/任务栏
+├─ main.py                  入口：采样线程 + 消息循环 + 托盘
 ├─ perf_osd/
 │  ├─ win32.py              ctypes 封装：分层窗口 / DIB / 热键 / 托盘 / 进程枚举
 │  ├─ overlay.py            画面板 + UpdateLayeredWindow
