@@ -20,14 +20,14 @@ DEFAULTS: dict = {
     # 刷新
     "refresh_ms": 100,       # 重绘间隔
     "sample_ms": 500,        # 采样间隔
-    # 显示项
-    "show_app": True,        # 显示正在统计帧率的进程名
+    # 显示项（超紧凑：默认只留 CPU / MEM / GPU 三行）
+    "show_app": True,        # 显示正在统计帧率的进程名（仅 FPS 开启时有效）
     "show_frametime": True,  # FPS 后面附带帧生成时间 ms
     "show_temp": True,       # GPU 温度
-    "show_vram": True,       # 显存占用
+    "show_vram": False,      # 显存占用（默认关掉，省一行）
     "gpu": {"backend": "auto", "index": 0},
     "fps": {
-        "enabled": True,
+        "enabled": False,            # 默认关闭：不跑 PresentMon，也就不需要管理员权限
         "window_s": 1.0,
         "pin_process": "",           # 填 exe 名可锁定某个游戏
         "presentmon": "tools/PresentMon.exe",

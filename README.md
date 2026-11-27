@@ -3,14 +3,14 @@
 # PerfOSD — 桌面性能悬浮窗
 
 一个绿色的 Windows 小工具：像微星小飞机（MSI Afterburner）+ RTSS 那样，在桌面和别的应用
-上面浮一块半透明面板，实时显示 **CPU 占用 / 内存占用 / GPU 占用 / 帧率（FPS）**。
+上面浮一行字，实时显示 **CPU 占用 / 内存占用 / GPU 占用**（帧率、显存可另行开启）。
 
 - 纯 Python + ctypes，**只有 `pillow` 一个第三方依赖**
 - 逐像素透明、圆角、**始终置顶**；窗口**完全不接收鼠标**（点击直接穿透到下层），不抢焦点
 - 任务栏留一个按钮，右键「关闭窗口」即可退出；位置靠热键/配置切换，不需要拖动
 - **背景蒙版可以一键关掉**，切成纯文字贴着桌面，几乎不挡画面
-- 留白、行距、标题行字号都按字号自适应收紧，同样字号下比早期版本省掉约 40% 面积
-- 采集端不往游戏里注入 DLL（帧率走 Intel PresentMon 的 ETW 事件）
+- **超紧凑排版**：行高按字形实高算、留白只留描边那圈，三行只有 176×52（125% 缩放，物理像素）
+- 默认不采集帧率，所以**不需要管理员权限**，双击就能用，也不会多一个后台进程
 
 两种模式，`Ctrl+Alt+B` 一键切：
 
@@ -21,19 +21,20 @@
 > 纯文字模式的字带黑色描边，压在白窗口、白网页上也看得清；周边一点像素都不占，
 > 适合全屏看片、盯代码、逛网页时嫌那块黑底碍事的情况。
 
-面板尺寸都由内容算出来：6 行（含游戏名标题）在 125% 缩放下约 247×155，纯文字约 239×147；
-没有帧率数据时标题行不出现，面板还会再矮一行。字号不变，间距只留字周围那一圈。
+面板尺寸由内容算出来：三行在 125% 缩放下 **176×52 物理像素**（纯文字），带上蒙版是 182×58；
+同样三行按以前的排版要 180×80，五行的老版本是 202×128——**去掉 VRAM/FPS 两行 + 收行距，
+面积比老版本少约 64%**。字号本身没动，动的全是字外那圈空白。
 
 ```
-┌───────────────────────┐
-│ Cyberpunk             │
-│ CPU      61%          │
-│ MEM      38%  12.3/32G│
-│ GPU      39%  55°C    │
-│ VRAM    7.4G  /8.0G   │
-│ FPS      144  6.9ms   │
-└───────────────────────┘
+┌────────────────────┐
+│ CPU   51%          │
+│ MEM   51% 16.3/32G │
+│ GPU   36%   48°C   │
+└────────────────────┘
 ```
+
+想把它变回来的键都在 `config.json`：`show_vram` 打开就有显存行，
+`fps.enabled` 打开就有帧率行（那时才需要管理员）。
 
 ---
 
@@ -50,8 +51,8 @@ pip install pillow        :: 只缺这一个包
 
 | 场景 | 双击哪个 |
 | --- | --- |
-| 只要 CPU / 内存 / GPU 数字 | **PerfOSD 性能悬浮窗** |
-| 需要 FPS（推荐，会弹 UAC） | **PerfOSD 性能悬浮窗（管理员）** |
+| 日常（CPU / 内存 / GPU，免提权） | **PerfOSD 性能悬浮窗** |
+| 要在游戏里看帧率（会弹 UAC，得先开 `fps.enabled`） | **PerfOSD 性能悬浮窗（管理员）** |
 
 两个 `.lnk` 也在项目目录里一份。**把文件夹搬走之后**图标会失效，双击 `创建快捷方式.bat`
 重新生成即可（它会自动认出当前 `pythonw.exe` 的位置和新的图标路径）。
@@ -68,18 +69,23 @@ pip install pillow        :: 只缺这一个包
 
 ---
 
-## 二、为什么 FPS 要管理员
+## 二、帧率是选装件（默认关）
 
-帧率是从 ETW（Windows 内核事件跟踪）里读的，`PresentMon` 抓 `DXGI/D3D Present` 事件需要
-**管理员权限**或者加入 `Performance Log Users` 组。三种办法任选：
+**默认配置里 `fps.enabled` 是 `false`**，所以开箱只显示 CPU / 内存 / GPU 三行，
+不启动 `PresentMon`、不碰 ETW、不要管理员权限。
 
-1. **管理员启动**（最简单）：双击 `管理员启动.bat`，或者在托盘菜单点
-   「以管理员身份重启（启用 FPS）」。
-2. **一次性授权，以后免提权**（管理员 CMD 里跑一次，然后注销重登）：
-   ```bat
-   net localgroup "Performance Log Users" %USERNAME% /add
-   ```
-3. 不折腾：面板上 FPS 那行会显示 `--  需管理员`，其他三项照常工作。
+想加回路帧率这一行：
+
+1. 把 `config.json` 里 `"fps": { "enabled": false }` 改成 `true`；
+2. 这时才需要管理员：帧率是从 ETW（Windows 内核事件跟踪）读的，`PresentMon` 抓
+   `DXGI/D3D Present` 事件要**管理员权限**或者 `Performance Log Users` 组。三种办法任选：
+   - **管理员启动**（最简单）：双击 `管理员启动.bat`，或者托盘菜单点
+     「以管理员身份重启（启用 FPS）」。
+   - **一次性授权，以后免提权**（管理员 CMD 里跑一次，然后注销重登）：
+     ```bat
+     net localgroup "Performance Log Users" %USERNAME% /add
+     ```
+   - 不折腾：那一行显示 `--  需管理员`，其他三行照常。
 
 ---
 
@@ -110,7 +116,7 @@ pip install pillow        :: 只缺这一个包
 
 | 键 | 默认 | 说明 |
 | --- | --- | --- |
-| `font_size` | `16` | 基准字号，高 DPI（125%/150%）会自动放大 |
+| `font_size` | `16` | 基准字号，高 DPI（125%/150%）会自动放大；**想改大小只动这一个键** |
 | `opacity` | `0.86` | 背景不透明度 0.3~1 |
 | `radius` | `10` | 圆角 |
 | `anchor` | `"top-right"` | 首次出现的位置：`top-right` / `top-left` / `bottom-right` / `bottom-left` |
@@ -119,13 +125,13 @@ pip install pillow        :: 只缺这一个包
 | `background` | `true` | **蒙版开关**：`false` = 纯文字无背景（热键/托盘切完会写回这里） |
 | `refresh_ms` | `100` | 重绘节流（数值变化不频繁，100ms 够用且几乎不占 CPU） |
 | `sample_ms` | `500` | 采样间隔 |
-| `show_app` | `true` | 面板顶部显示当前统计的是哪个程序 |
+| `show_app` | `true` | 面板顶部显示当前统计的是哪个程序（仅 FPS 开启时出现） |
 | `show_frametime` | `true` | FPS 后面跟帧生成时间（ms） |
 | `show_temp` | `true` | GPU 温度 |
-| `show_vram` | `true` | 显存占用（NVIDIA 有；AMD/Intel 走 PDH 时没有） |
+| `show_vram` | `false` | 显存占用行（默认关；NVIDIA 有，AMD/Intel 走 PDH 时没有） |
 | `gpu.backend` | `"auto"` | `auto` / `nvml` / `pdh` |
 | `gpu.index` | `0` | 多显卡时用第几张 |
-| `fps.enabled` | `true` | 关掉就不启动 PresentMon |
+| `fps.enabled` | `false` | **默认关**：关着不启动 PresentMon、不要管理员 |
 | `fps.window_s` | `1.0` | FPS 统计窗口，越小越灵敏、越大越稳 |
 | `fps.pin_process` | `""` | 填 `cs2.exe` 这类 exe 名就固定统计它，不填则跟随前台窗口 |
 | `fps.presentmon` | `"tools/PresentMon.exe"` | PresentMon 路径 |
@@ -141,11 +147,16 @@ pip install pillow        :: 只缺这一个包
 | 内存 | `GlobalMemoryStatusEx` | `dwMemoryLoad` 百分比 + 已用/总量 |
 | GPU | `nvml.dll`（NVIDIA）→ 失败退 `PDH \GPU Engine(*)\Utilization Percentage` | PDH 那套 A/N/I 三家都注册，Win10 1709+ 可用；按 3D 引擎聚合 |
 | GPU 温度 / 显存 | NVML | 只有 NVIDIA 有 |
-| FPS | `PresentMon`（ETW）把 CSV 打到 stdout，本工具解析 `MsBetweenPresents` | FPS = 窗口内帧数 ÷ 这些帧的总时长，比看墙钟更抗批量输出 |
+| FPS | `PresentMon`（ETW）把 CSV 打到 stdout，本工具解析 `MsBetweenPresents` | FPS = 窗口内帧数 ÷ 这些帧的总时长，比看墙钟更抗批量输出；默认不启用 |
 
-悬浮窗本身：`CreateWindowEx(WS_EX_LAYERED|TOPMOST|TOOLWINDOW|NOACTIVATE|TRANSPARENT)`，
+悬浮窗本身：`CreateWindowEx(WS_EX_LAYERED|TOPMOST|APPWINDOW|NOACTIVATE|TRANSPARENT)`，
 每帧用 Pillow 画一张 RGBA 图 → 预乘 alpha → `UpdateLayeredWindow(AC_SRC_ALPHA)`。
 所以是真透明（不是抠色），不会闪，也不会把桌面变成纯色块。
+
+排版也是量出来的，不是拍出来的：每行的行高 = **该行字形的实际高度**（`font.getbbox("0")`）
++ 一点行距，不是 `字号 × 1.18` 这类拍脑袋的倍数；基线按字形上下边界做光学居中，
+所以 20px 的字行高只有 16px，换字号也不会突然松散。左右留白纯文字模式固定 2px（只给
+1px 描边留位置），带蒙版才留 26% 字号做圆角。
 
 ---
 
@@ -154,7 +165,7 @@ pip install pillow        :: 只缺这一个包
 1. **独占全屏（Exclusive Fullscreen）的游戏看不到面板**。这是 Windows 的合成器行为：
    普通窗口没法画到独占全屏的 swapchain 上，除非往进程里注入 hook——那正是 RTSS 干的事，
    代价是反作弊风险。**游戏里切「无边框窗口 / 全屏窗口化」就正常显示**（现在 99% 的游戏都这么跑）。
-2. FPS 没有管理员权限就没有。
+2. 帧率要管理员权限（所以默认闭着，见第二节）。
 3. AMD / Intel 显卡只有占用率，没有显存和温度（要读需要厂商 SDK）。
 4. 多显示器：默认贴在**主显示器**；跨屏要改 `config.json` 的 `pos`，不会自动适配不同 DPI 的缩放。
    另外因为它要在任务栏留按钮，Alt-Tab 里也会列出一个 PerfOSD（点它不会激活，纯占位）。
@@ -179,10 +190,11 @@ perf-osd/
 ├─ PerfOSD 性能悬浮窗.lnk     带图标的启动快捷方式
 ├─ PerfOSD 性能悬浮窗（管理员）.lnk
 ├─ 创建快捷方式.bat           搬家后重建快捷方式
-├─ tools/PresentMon.exe     Intel 官方 PresentMon 2.6.0（x64）
+├─ tools/PresentMon.exe     Intel 官方 PresentMon 2.6.0（x64，仅开 FPS 时启动）
 ├─ tools/make_shortcuts.ps1  快捷方式生成的 PowerShell 脚本
+├─ tools/make_preview.py     docs/ 里两张预览图的生成脚本（合成背景，非截图）
 ├─ 启动.bat                 普通权限启动
-├─ 管理员启动.bat            提权启动（解锁 FPS）
+├─ 管理员启动.bat            提权启动（仅在开 FPS 时有意义）
 ├─ config.json              运行时生成
 └─ perf-osd.log             日志
 ```
@@ -201,7 +213,8 @@ python main.py --console    :: 带控制台日志运行
 代码 MIT，见 [LICENSE](LICENSE)。`tools/PresentMon.exe` 是 Intel 官方 PresentMon 2.6.0，
 同为 MIT，版权归 Intel，说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
-不联网、不写注册表、不装服务、没有遥测；唯一的外部进程是随主程序一起退出的 PresentMon。
+不联网、不写注册表、不装服务、没有遥测；默认连外部进程都不启动，
+只有当你在配置里打开 `fps.enabled` 时才会拉起 PresentMon（并随主程序一起退出）。
 
 ---
 

@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
-"""PerfOSD —— 桌面实时性能悬浮窗（CPU / 内存 / GPU / FPS）。
+"""PerfOSD —— 桌面实时性能悬浮窗（CPU / 内存 / GPU，超紧凑）。
+
+默认只显示 CPU / MEM / GPU 三行；显存和帧率在 config.json 里可以重新打开。
 
 用法:
     python main.py              正常启动（无控制台）
     python main.py --console    带控制台，输出日志
     python main.py --probe      只采集并打印，不创建悬浮窗（自检用）
-    python main.py --elevate    不足管理员权限时自动提权重启（FPS 需要）
+    python main.py --elevate    不足管理员权限时自动提权重启（仅在开启 FPS 时需要）
 """
 from __future__ import annotations
 
@@ -119,23 +121,25 @@ class Sampler(threading.Thread):
             vram_used = s.vram_used_mb
             vram_total = s.vram_total_mb
 
-        # ---- 帧率：优先前台进程，其次是最近最活跃的进程
-        fg_pid, fg_name = win32.foreground_process()
-        pin = str(c.get("fps", {}).get("pin_process") or "").strip()
-        if pin:
-            pinned = self._find_pid(pin)
-            if pinned:
-                fg_pid, fg_name = pinned, pin
-        chosen_pid, fps = None, None
-        best = self.tracker.best(prefer_pid=fg_pid, max_age=2.0)
-        if best:
-            chosen_pid, fps = best
-        fps_app = self.tracker.app_name(chosen_pid) if chosen_pid else ""
-        frametime = (1000.0 / fps) if fps else None
+        # ---- 帧率：默认关闭（超紧凑模式不再显示 FPS），开了才去找前台进程
+        fps_on = bool(c.get("fps", {}).get("enabled", False))
+        chosen_pid, fps, fps_app, frametime = None, None, "", None
+        if fps_on:
+            fg_pid, fg_name = win32.foreground_process()
+            pin = str(c.get("fps", {}).get("pin_process") or "").strip()
+            if pin:
+                pinned = self._find_pid(pin)
+                if pinned:
+                    fg_pid, fg_name = pinned, pin
+            best = self.tracker.best(prefer_pid=fg_pid, max_age=2.0)
+            if best:
+                chosen_pid, fps = best
+            fps_app = self.tracker.app_name(chosen_pid) if chosen_pid else ""
+            frametime = (1000.0 / fps) if fps else None
 
         rows: list[dict] = []
 
-        if c.get("show_app", True) and fps_app:
+        if fps_on and c.get("show_app", True) and fps_app:
             name = fps_app
             if name.lower().endswith(".exe"):
                 name = name[:-4]
@@ -172,16 +176,16 @@ class Sampler(threading.Thread):
         else:
             rows.append({"label": "GPU", "value": "  --", "extra": "", "level": LEVEL_NORMAL})
 
-        if fps and c.get("fps", {}).get("enabled", True):
-            extra = f"{frametime:.1f}ms" if (frametime and c.get("show_frametime", True)) else ""
-            rows.append({"label": "FPS", "value": f"{fps:3.0f}", "extra": extra,
-                         "level": LEVEL_ACCENT})
-        else:
-            extra = ""
-            if self.shared.get("fps_admin_blocked"):
-                extra = "需管理员"
-            rows.append({"label": "FPS", "value": "  --", "extra": extra,
-                         "level": LEVEL_NORMAL})
+        if fps_on:
+            if fps:
+                extra = (f"{frametime:.1f}ms"
+                         if (frametime and c.get("show_frametime", True)) else "")
+                rows.append({"label": "FPS", "value": f"{fps:3.0f}", "extra": extra,
+                             "level": LEVEL_ACCENT})
+            else:
+                extra = "需管理员" if self.shared.get("fps_admin_blocked") else ""
+                rows.append({"label": "FPS", "value": "  --", "extra": extra,
+                             "level": LEVEL_NORMAL})
         return rows
 
     def _find_pid(self, name: str) -> int:

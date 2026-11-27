@@ -409,12 +409,14 @@ class Overlay:
     def _layout(self, rows: list[dict]):
         base = float(self.cfg.get("font_size", 16)) * self.scale
         fs = max(10, int(round(base)))
-        # 紧凑布局：留白只留字周围一圈，行距按字形本身算，不按字号的倍数铺开
-        pad = int(round(fs * 0.40)) if self.background else max(4, int(round(fs * 0.18)))
-        gap_x = int(round(fs * 0.42))
-        gap2 = int(round(fs * 0.34))
-        line_k = 1.18
+        # 超紧凑：行高不再按字号倍数铺开，而是量字形的实际高度再加一点点行距；
+        # 左右留白只够描边和圆角，一个多余像素都不留。
         stroke = 0 if self.background else (1 if fs < 30 else 2)
+        # 纯文字模式的留白只要刚好够描边：1px 描边留 2px，2px 描边留 3px，多一个像素都不给
+        pad = max(5, int(round(fs * 0.26))) if self.background else stroke + 1
+        gap_x = int(round(fs * 0.34))
+        gap2 = int(round(fs * 0.40))
+        lead = max(2, int(round(fs * 0.15)))      # 行与行之间露出的空隙
 
         probe = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
 
@@ -434,8 +436,9 @@ class Overlay:
             f_lab = self._pick_font(fs_r, True, _needs_cjk(lab))
             f_val = self._pick_font(fs_r, True, _needs_cjk(val))
             f_ext = self._pick_font(fs_rd, False, _needs_cjk(ext))
-            lh = max(12, int(round(fs_r * line_k)))
             g_top, g_bottom = self._glyph_box(f_val)
+            # 行高 = 这行字形的实高 + 固定行距，而不是字号的 1.18 倍
+            lh = max(11, int(round(g_bottom - g_top)) + lead)
             baseline = y + int(round(lh / 2 - (g_top + g_bottom) / 2))
             geo.append(dict(top=y, lh=lh, baseline=baseline,
                             fonts=(f_lab, f_val, f_ext),
@@ -451,7 +454,7 @@ class Overlay:
         c2 = max([g["w_ext"] for g in geo] + [0])
         width = pad * 2 + c0 + gap_x + c1 + (gap2 + c2 if c2 else 0)
         return dict(fs=fs, pad=pad, gap_x=gap_x, gap2=gap2,
-                    line_h=int(round(fs * line_k)), gap_y=0, c0=c0, c1=c1, c2=c2,
+                    line_h=geo[0]["lh"] if geo else 0, gap_y=0, c0=c0, c1=c1, c2=c2,
                     width=max(40, width), height=max(24, height),
                     f_main=f_main, f_dim=f_dim, stroke=stroke, bg=self.background,
                     geo=geo)
@@ -524,6 +527,10 @@ class Overlay:
             return
         img, m = self._paint(rows)
         w_, h_ = img.size
+        if not getattr(self, "_geo_logged", False):
+            self._geo_logged = True
+            log.info("首帧 %dx%d fs=%d scale=%.2f 行数=%d",
+                     w_, h_, m["fs"], self.scale, len(rows))
         x, y = self._place(w_, h_)
         try:
             self.surface.blit(self.hwnd, _premultiplied_bgra(img), w_, h_, (x, y))
